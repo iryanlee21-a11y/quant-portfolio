@@ -151,3 +151,28 @@ def walk_forward(hold_ret: pd.DataFrame, ma_ret: pd.DataFrame, etf_flags: dict,
         log.append({"date": dates[s], "비용": cost, "전략사용": int(use_ma.sum()),
                     **{t: wi for t, wi in zip(tickers, w)}})
     return pd.concat(out), pd.DataFrame(log).set_index("date")
+
+
+# ---------------------------------------------------------------------------
+# 5. 국면(상승/하락) 표시 - 추가 실험용
+# ---------------------------------------------------------------------------
+def zigzag_regime(price: pd.Series, threshold=0.10):
+    """사후에 고점·저점을 표시한다 (threshold 이상 반대로 움직이면 전환점으로 인정).
+    결과는 '나중에 돌아보면 알 수 있는' 국면이라 실제 투자 시점에는 알 수 없다.
+    반환: (상승장 여부 Series(고점 다음 날부터 False), 전환점 목록[(날짜, '고점'|'저점')])"""
+    state, ext, ext_i, pivots = None, price.iloc[0], price.index[0], []
+    for d, v in price.items():
+        if state in (None, "up"):
+            if v > ext:
+                ext, ext_i = v, d
+            elif v < ext * (1 - threshold):
+                pivots.append((ext_i, "고점")); state, ext, ext_i = "down", v, d
+        if state == "down":
+            if v < ext:
+                ext, ext_i = v, d
+            elif v > ext * (1 + threshold):
+                pivots.append((ext_i, "저점")); state, ext, ext_i = "up", v, d
+    bull = pd.Series(True, index=price.index)
+    for d, kind in pivots:
+        bull.loc[d:] = kind == "저점"
+    return bull.shift(1, fill_value=True), pivots
